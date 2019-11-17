@@ -39,6 +39,13 @@ class StreamLord(object):
             cookie[0]: cookie[1],
         })
 
+    def space_make(self, int_in):
+        int_float = int_in/2
+        if int_in % 2 != 0:
+            return [math.floor(int_float), math.ceil(int_float)]
+        else:
+            return [int(int_float), int(int_float)]
+
     def parse_generic(self, m):
         str_part = m.group(1)
         prototype_method = m.group(2).lstrip()
@@ -212,9 +219,32 @@ class StreamLord(object):
         webpage = self.get_streamlord_url(url, soupify=True)
         return self.parse_show(webpage)
 
+    def show_info(self, url):
+        soup = self.get_streamlord_url(url, soupify=True)
+        imdb_rating = soup.find(
+            'p', attrs={'class': 'search-rating'}).text.strip()
+        title = soup.find(
+            'div', attrs={'class': 'movie-title'}).text.strip()
+        section = soup.find('ul', attrs={'id': 'description-ul'})
+        parts = [[sect.text.lower() for sect in sect.find_all(
+            'li')] for sect in section.find_all('td')[:-1]]
+        parts.append(['rating', imdb_rating])
+        return (title, {p[0].lstrip().rstrip(): p[1].lstrip().rstrip() for p in parts})
+
+    def table_header(self, table, header_name):
+        table_length = len(table.split('\n')[0])
+        available_space = table_length - 2
+        spaces = self.space_make(available_space - len(header_name))
+        og_s = "-"*available_space
+        s1 = spaces[0]*" "
+        s2 = spaces[1]*" "
+        return f"+{og_s}+\n|{s1}{header_name}{s2}|"
+
     def parse_entries(self, entry):
-        name = entry.find('div', attrs={'class': 'movie-grid-title'}).find(text=True).lstrip().rstrip()
-        year = entry.find('span', attrs={'class': 'movie-grid-year'}).text.strip()
+        name = entry.find(
+            'div', attrs={'class': 'movie-grid-title'}).find(text=True).lstrip().rstrip()
+        year = entry.find(
+            'span', attrs={'class': 'movie-grid-year'}).text.strip()
         url = entry.find('a', href=True).attrs['href']
         poster = entry.find('img').attrs.get('src')
         rating = entry.find(
@@ -230,7 +260,7 @@ class StreamLord(object):
         obj = {
             'name': name,
             'url': url,
-            'rating': rating,
+            'rating': float(rating),
             'poster': poster,
             'description': description,
             'starring': starring,
@@ -238,8 +268,9 @@ class StreamLord(object):
         }
         return obj
 
-    def get_genre(self, genre):
-        url = 'http://www.streamlord.com/movies.php?genre={}&page=1'.format(genre)
+    def get_paginated_content(self, path_type, query_key, query_val):
+        url = 'http://www.streamlord.com/{}.php?{}={}&page=1'.format(
+            path_type, query_key, query_val)
         soup = self.get_streamlord_url(url, soupify=True)
         pagination = soup.select('#pagination > span > a')
         pag_bool = bool(pagination)
@@ -248,43 +279,12 @@ class StreamLord(object):
             r_num = int(pagination[-1].text) + 1
         shows = list()
         for m in movies:
-            try:
-                obj = self.parse_entries(m)
-                shows.append(obj)
-            except AttributeError:
-                print(m)
-                print("-"*238)
+            obj = self.parse_entries(m)
+            shows.append(obj)
         if pag_bool:
             for i in range(2, r_num):
-                url = 'http://www.streamlord.com/movies.php?genre={}&page={}'.format(genre, i)
-                soup = self.get_streamlord_url(url, soupify=True)
-                movies = soup.find_all('div', attrs={'class': 'movie-grid'})
-                for m in movies:
-                    obj = self.parse_entries(m)
-                    shows.append(obj)
-
-        shows.sort(key=lambda x: x['name'])
-        return shows
-
-    def get_shows_letter(self, letter, letter_type):
-        url = 'http://www.streamlord.com/{}.php?sortby={}&page=1'.format(letter_type, letter)
-        soup = self.get_streamlord_url(url, soupify=True)
-        pagination = soup.select('#pagination > span > a')
-        pag_bool = bool(pagination)
-        movies = soup.find_all('div', attrs={'class': 'movie-grid'})
-        if pag_bool:
-            r_num = int(pagination[-1].text) + 1
-        shows = list()
-        for m in movies:
-            try:
-                obj = self.parse_entries(m)
-                shows.append(obj)
-            except AttributeError:
-                print(m)
-                print("-"*238)
-        if pag_bool:
-            for i in range(2, r_num):
-                url = 'http://www.streamlord.com/{}.php?sortby={}&page={}'.format(letter_type, letter, i)
+                url = 'http://www.streamlord.com/{}.php?{}={}&page={}'.format(
+                    path_type, query_key, query_val, i)
                 soup = self.get_streamlord_url(url, soupify=True)
                 movies = soup.find_all('div', attrs={'class': 'movie-grid'})
                 for m in movies:
