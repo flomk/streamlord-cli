@@ -85,8 +85,10 @@ class StreamLordCli(StreamLord):
             re.search(r'"tracks": (\[\{.*?\}\])', webpage).group(1))
         print([cap for cap in captions if cap['label'] == 'English'][0]['file'])
 
-    def args_genre(self, arg_genre, return_json=False):
+    def args_genre(self, arg_genre, return_json=False, sort_by=False):
         movies = self.get_paginated_content('movies', 'genre', arg_genre)
+        if sort_by is not None:
+            movies.sort(key=lambda x: x[sort_by], reverse=True)
         if return_json:
             print(json.dumps(movies, indent=4))
         else:
@@ -233,7 +235,7 @@ def main():
 
     if args.genre:
         streamlord_cli.args_genre(
-            genres[args.genre], return_json=bool(args.json))
+            genres[args.genre], return_json=bool(args.json), sort_by=args.sort_by)
 
     if args.list_genres:
         if bool(args.json):
