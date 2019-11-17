@@ -1,0 +1,239 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import math
+import re
+import sys
+
+import tabulate
+from colored import attr, bg, fg
+
+from streamlord import StreamLord
+
+
+class StreamLordCli(StreamLord):
+    def parse_show_entry(self, in_str):
+        rainbow = {
+            '1': 9,
+            '2': 214,
+            '3': 220,
+            '4': 77,
+            '5': 75,
+            '6': 128
+        }
+        first_char = in_str[0].upper()
+        str_color = rainbow[str((int(in_str) % 6) + 1)]
+        return f"{fg(str_color)}{in_str}{bg(0)}{attr(0)}"
+
+    def space_make(self, int_in):
+        int_float = int_in/2
+        if int_in % 2 != 0:
+            return [math.floor(int_float), math.ceil(int_float)]
+        else:
+            return [int(int_float), int(int_float)]
+
+    def make_letter_table(self, letter_json, show_year=False):
+        if show_year:
+            return (['name', 'rating', 'url', 'year'], [[entry['name'].strip(), entry['rating'], entry['url'].replace('watch-tvshow-', '').replace('watch-movie-', '').replace('.html', ''), entry['year']] for entry in letter_json])
+        else:
+            return (['name', 'rating', 'url'], [[entry['name'], entry['rating'], entry['url'].replace('watch-tvshow-', '').replace('watch-movie-', '').replace('.html', '')] for entry in letter_json])
+
+    def make_show_table(self, show_json):
+        table = list()
+        for s_and_e in show_json:
+            season_num = s_and_e['season']
+            season_str = self.parse_show_entry(season_num)
+            for ep in s_and_e['episodes']:
+                part_one = "S{}E{}".format(
+                    season_str, "{:02d}".format(int(ep.get('episode'))))
+                title_name = ep.get('title')
+                url = ep.get('url').replace(
+                    'http://www.streamlord.com/episode-', '')
+                url = url.replace('.html', '')
+                table.append([part_one, title_name, url])
+        return table
+
+    def args_letter(self, arg_lttr, letter_type, return_json=False, show_year=False):
+        lttr_json = self.get_shows_letter(arg_lttr, letter_type)
+        if return_json:
+            print(json.dumps(lttr_json, indent=4))
+        else:
+            headers, table = self.make_letter_table(lttr_json, show_year)
+            tabulated = tabulate.tabulate(
+                table, headers=headers, tablefmt="psql")
+            table_length = len(tabulated.split('\n')[0])
+            available_space = table_length - 2
+            spaces = self.space_make(available_space - len(arg_lttr))
+            og_s = "-"*available_space
+            s1 = spaces[0]*" "
+            s2 = spaces[1]*" "
+            print(f"+{og_s}+\n|{s1}{arg_lttr}{s2}|")
+            print(tabulated)
+
+    def args_episode(self, arg_episode):
+        episode_url = 'http://www.streamlord.com/episode-{}.html'.format(
+            arg_episode)
+        url = self.get_stream_url(self.get_streamlord_url(episode_url))
+        print(url)
+
+    def args_film(self, arg_film):
+        movie_url = 'http://www.streamlord.com/watch-movie-{}.html'.format(
+            arg_film)
+        webpage = self.get_streamlord_url(movie_url)
+        src = re.search(r'return\("([^"]+)"\);', webpage)
+        if src is not None:
+            print(src.group(1))
+        else:
+            print("Movie does not have source")
+
+    def args_genre(self, arg_genre, return_json=False):
+        movies = self.get_genre(arg_genre)
+        if return_json:
+            print(json.dumps(movies, indent=4))
+        else:
+            headers, table = self.make_letter_table(movies, show_year=True)
+            tabulated = tabulate.tabulate(
+                table, headers=headers, tablefmt="psql")
+            table_length = len(tabulated.split('\n')[0])
+            available_space = table_length - 2
+            spaces = self.space_make(available_space - len(arg_genre))
+            og_s = "-"*available_space
+            s1 = spaces[0]*" "
+            s2 = spaces[1]*" "
+            print(f"+{og_s}+\n|{s1}{arg_genre.capitalize()}{s2}|")
+            print(tabulated)
+
+    def args_show(self, arg_shw, return_json=False):
+        show_url = 'http://www.streamlord.com/watch-tvshow-{}.html'.format(
+            arg_shw.lower())
+        shows_episodes = self.get_show(show_url)
+        if return_json:
+            print(json.dumps(shows_episodes, indent=4))
+        else:
+            show = shows_episodes['show']
+            show_name = shows_episodes['info']['title']
+            table = self.make_show_table(show)
+
+            table = tabulate.tabulate(table, headers=[
+                'episode', 'title', 'id'], tablefmt="psql")
+            table_length = len(table.split('\n')[0])
+            available_space = table_length - 2
+            spaces = self.space_make(available_space - len(show_name))
+            og_s = "-"*available_space
+            s1 = spaces[0]*" "
+            s2 = spaces[1]*" "
+            print(f"+{og_s}+\n|{s1}{show_name}{s2}|")
+            print(table)
+
+
+streamlord_cli = StreamLordCli()
+
+
+def main():
+    streamlord_str = '''
+             __                            __               __           ___
+       _____/ /_________  ____ _____ ___  / /___  _________/ /     _____/ (_)
+      / ___/ __/ ___/ _ \/ __ `/ __ `__ \/ / __ \/ ___/ __  /_____/ ___/ / /
+     (__  ) /_/ /  /  __/ /_/ / / / / / / / /_/ / /  / /_/ /_____/ /__/ / /
+    /____/\__/_/   \___/\__,_/_/ /_/ /_/_/\____/_/   \__,_/      \___/_/_/
+
+    streamlord-cli [-h] [-j] [-c CATEGORY] [--list-category] [-t] [-m]
+                   [-l LETTER | -s SHOW | -e EPISODE | -f FILM | -g GET]
+    '''
+
+    categories = {
+        "1": "action",
+        "2": "adventure",
+        "3": "comedy",
+        "4": "drama",
+        "5": "crime",
+        "6": "animation",
+        "7": "thriller",
+        "8": "romance",
+        "9": "horror",
+        "10": "fantasy",
+        "11": "history",
+        "12": "family",
+        "13": "sci-fi",
+        "14": "mystery",
+        "15": "war",
+        "16": "film-noir",
+        "17": "biography",
+        "18": "sport",
+        "19": "music",
+        "20": "documentary",
+        "21": "western",
+        "22": "wwe"
+    }
+    # parser = argparse.ArgumentParser(
+    #     description=f'CLI interface to streamlord.com', usage=streamlord_str)
+    parser = argparse.ArgumentParser(
+        description=f'CLI interface to streamlord.com')
+    parser.add_argument('-j', '--json', dest='json',
+                        action='store_true', help='return json response')
+    parser.add_argument('-c', '--category', dest='category', action='store')
+    parser.add_argument('--list-category', dest='list_categories',
+                        action='store_true', help='list all categories')
+    group = parser.add_mutually_exclusive_group()
+
+    tv_or_movie = parser.add_argument_group('Type of media')
+    tv_or_movie.add_argument('-t', '--tv', dest='tv', action='store_true')
+    tv_or_movie.add_argument(
+        '-m', '--movie', dest='movie', action='store_true')
+
+    group.add_argument('-l', '--letter', dest='letter', action="store",
+                       help='Get all shows that start with a letter')
+    group.add_argument('-s', '--show', dest='show',
+                       action='store', help='Get all episodes of T.V. show')
+    group.add_argument('-e', '--episode', dest='episode',
+                       action='store', help='Get the source of a T.V. episode')
+    group.add_argument('-f', '--film', dest='film',
+                       action='store', help='Get the source of a movie')
+    group.add_argument('-g', '--get', dest='get', action='store',
+                       help='Get the html of a streamlord url')
+
+    args = parser.parse_args()
+
+    if args.letter:
+        if (args.tv is not False or args.movie is not False):
+            mode = None
+            show_yrs = False
+            if args.movie:
+                mode = "movies"
+                show_yrs = True
+            elif args.tv:
+                mode = "series"
+            streamlord_cli.args_letter(
+                args.letter.upper(), mode, return_json=bool(args.json), show_year=show_yrs)
+        elif (args.tv is False and args.movie is False):
+            parser.error("--letter requires --tv or --movie.")
+
+    if args.show:
+        streamlord_cli.args_show(args.show, return_json=bool(args.json))
+
+    if args.episode:
+        streamlord_cli.args_episode(args.episode)
+
+    if args.film:
+        streamlord_cli.args_film(args.film)
+
+    if args.get:
+        print(streamlord_cli.get_streamlord_url(args.get))
+
+    if args.category:
+        streamlord_cli.args_genre(
+            categories[args.category], return_json=bool(args.json))
+
+    if args.list_categories:
+        if bool(args.json):
+            print(json.dumps([{"code": k, "category": v}
+                              for k, v in categories.items()], indent=4))
+        else:
+            table = tabulate.tabulate([[k, v] for k, v in categories.items()], headers=[
+                'code', 'category'], tablefmt="psql")
+            print(table)
+
+
+if __name__ == "__main__":
+    main()
